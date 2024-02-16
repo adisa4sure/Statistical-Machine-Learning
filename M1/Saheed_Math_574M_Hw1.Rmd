@@ -1,0 +1,113 @@
+---
+title: "Math_574M_Hw7"
+author: "Saheed Adisa Ganiyu"
+date: "2023-08-30"
+output: pdf_document
+---
+
+### 10. Generate random numbers from Normal distribution
+
+```{r }
+help(set.seed)
+set.seed(2023)     # for reproducible of random generated number
+x = rnorm(10, mean=0, sd=1)     # generating a random sample of 10 numbers from a normal distribution
+print(round(x,4))
+plot(density(x))     # creating a density plot 
+
+```
+
+### 11. Generate data from multivariate normal distribution.
+```{r }
+library(MASS)     # loading the MASS package
+help(mvrnorm)
+mean1 = c(2,1)     # creating a vector of two element
+cov1 = matrix(c(1,0,0,1),nrow=2)     # creating a matrix of size 2x2
+data1 = mvrnorm(50,mean1,cov1)     # generating a random sample of 50 data points from a multivariate normal distribution
+print(data1)
+plot(data1,xlab="x1",ylab="x2",col="blue")     # creating a scatter plot of data1
+
+```
+
+
+
+### 12. Draw a scatter plot
+```{r }
+x = seq(0,10,0.5)     # generating a sequence of numbers from 0 to 10 with step of 0.5
+y = seq(2,12,0.5)     # generating a sequence of numbers from 2 to 12 with step of 0.5
+plot(x,y)     # creating the plot of x, y
+lines(x,y)
+abline(a=0,b=1)     # adding a straight line of intercept "a" with slope "b"
+```
+
+### 13. Load data and get basic statistics summary
+```{r }
+data(cars)     # loading the car dataset 
+cars
+attach(cars)     # attaching the cars dataset to the search path
+mean(dist)     # computing the mean of columns "dist"
+var(dist)     # computing the variance of columns "dist"
+hist(dist)     # crating the histogram of "dist"
+```
+
+### 14. Matrix and submatrix
+```{r }
+a = matrix(rnorm(20), 5, 4)     # creating a 5x4 matrix with 20 random numbers from a standard normal distribution
+a
+b = a[1,]     # extractsing the first row of the matrix "a" 
+b
+c = a[, 2:4]     # extracting columns 2 through 4
+c
+d = a[-c(1:2),]     # excluding rows 1 and 2 from the matrix "a"
+d
+```
+
+### 15. Fit a simple linear regression model
+```{r }
+ mymodel = lm(dist ~ speed)     # fitting the linear model by regressing column "dist" on column "speed"
+summary(mymodel)
+### draw the scatter plot
+plot(cars, main="Stopping Distance versus Speed")
+### draw the fitted regression line (red)
+lines(speed, fitted(mymodel), type="l", lty=1, col=2)
+### draw a smooth line through a scatter plot (green)
+lines(stats::lowess(cars), type="l", lty=1, col=3)
+detach(cars)
+```
+
+### 16. Data manipulation using tidyr and dplyr. Make plots using ggplot2.
+```{r }
+# Loading the packages
+library(dplyr)
+library(dplyr)
+library(ggplot2)
+
+data(mtcars)     # loading mtcars dataset
+help(mtcars)
+### select all cars with automatic transmission and
+### compute average mpg by number of cylinders
+data1 <- mtcars %>%
+  filter(am == 0) %>%     # the "%>%" is pipe operator which is use to chain together a series of data manipulation
+  group_by(cyl) %>%
+  summarise(avg_mpg = mean(mpg))
+
+### Display the result
+print(data1)
+
+### draw a barplot
+ggplot(data1, aes(x=as.factor(cyl), y=avg_mpg, fill=as.factor(cyl))) +
+   geom_bar(stat="identity") +     # this adds a bar chart layer to the plot
+   scale_fill_brewer(palette="Set1")+
+   labs(x = "Number of Cylinders", y = "Average MPG", title = "Average MPG by Number of Cylinders")
+```
+
+
+```{r }
+
+```
+
+
+
+
+
+
+

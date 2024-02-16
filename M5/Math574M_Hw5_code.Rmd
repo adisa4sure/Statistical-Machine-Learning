@@ -1,0 +1,395 @@
+
+---
+title: "Math574M_Hw5"
+author: "Saheed Adisa, Ganiyu"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    latex_engine: xelatex
+---
+
+## 6. Download the prostate cancer data set from https://hastie.su.domains/ElemStatLearn/. The data set contains eight predictors (columns 1-8), $\mathbf{X} \in R^8$, and the outcome $Y$ (column 9). The last column (column 10 ) is the train/test indicator; there are $n=67$ training data points and $\bar{n}=30$ test data points. Denote the training set by $\left\{\left(\mathbf{x}_i, y_i\right), i=1, \cdots, n\right\}$ and the test set by $\left\{\left(\tilde{\mathbf{x}}_i, \tilde{y}_i\right), i=1, \cdots, \tilde{n}\right\}$.
+## **Analysis:** Consider the linear regression of $Y$ on $\mathbf{X}$. For any fitted model $\hat{f}(\mathbf{x})=\hat{\beta}_0+\hat{\beta}^T \mathbf{x}$, define its training error by TrainErr $=\frac{1}{n} \sum_{i=1}^n\left[y_i-\hat{f}\left(\mathbf{x}_i\right)\right]^2$ and its test error by TestErr $=\frac{1}{n} \sum_{i=1}^{\bar{n}}\left(\tilde{y}_i-\hat{f}\left(\tilde{\mathbf{x}}_i\right)\right]^2$.\
+
+### (a) Fit the standard linear regression model using OLS. Report its $R^2$, p-values of regression coefficients, the set of significant predictors (at the level $\alpha=0.05$ ), TrainErr, and TestErr. Use $\mathrm{R}$ functions " $\operatorname{lm}()$ " and "summary()" to do the analysis.
+
+```{r }
+# loading the dataset from the book site
+prostate_data <- read.table(
+  "https://hastie.su.domains/ElemStatLearn/datasets/prostate.data")
+x_train <- subset(prostate_data, train == TRUE)[,1:9]
+y_train <- subset(prostate_data, train == TRUE)[,9]
+x_test <- subset(prostate_data, train == FALSE)[,1:9]
+y_test <- subset(prostate_data, train == FALSE)[,9]
+```
+
+
+### fitting and summary of the linear model
+```{r }
+lm_model <- lm(lpsa ~ ., data = x_train)
+summary(lm_model)
+```
+
+
+
+### computing the train and test error
+```{r }
+# Training error
+train_error <- mean((y_train - predict(lm_model,x_train[,1:8]))^2)
+
+# Test error
+test_error <- mean((y_test - predict(lm_model, newdata = x_test[,1:8]))^2)
+cat("Train Error=", train_error, "\n", "Test Error=", test_error)
+```
+
+
+
+### (b) Apply forward selection to select variables use R function "regsubsets()" in the package "leaps". You should get a sequence of eight models, $\widehat{M}_1, \cdots, \widehat{M}_8$, in the increasing order of model size. For each model $\widehat{M}_j, j=1, \cdots, 8$, report its regression coefficients, calculate its TrainErr, and calculate its BIC using the formula
+$$
+B I C\left(\widehat{M}_j\right)=n \log (\text { TrainErr })+\log (n)\left|\widehat{M}_j\right|,
+$$
+### where $\left|\widehat{M}_j\right|$ is the number of variables in the model (including the intercept). Choose the best model by minimizing BIC, and report the set of important variables. Furthermore, use the selected variables to refit the OLS and report TestErr.
+```{r }
+library(leaps)  
+# Forward selection
+forward_model <- regsubsets(lpsa ~ ., data = x_train, nvmax = 8, method = "forward")
+summary(forward_model)
+```
+
+
+
+### computing TrainErr and BIC for each model and select the best model
+```{r }
+# Get the model with the minimum BIC
+best_model <- which.min(summary(forward_model)$bic)
+
+# Retrieve the selected model
+selected_model <- summary(forward_model)$which[best_model, ]
+
+# Extract the variables in the selected model
+selected_variables <- names(selected_model[selected_model == 1])
+selected_variables <- selected_variables[-1]
+
+# Fit the OLS model using the selected variables
+selected_lm_model <- lm(lpsa ~ ., data = x_train[, c("lpsa", selected_variables)])
+
+# Calculate TrainErr
+selected_train_error <- mean((y_train - predict(selected_lm_model))^2)
+
+# Calculate BIC
+n <- nrow(x_train)
+bic <- n * log(selected_train_error) + log(n) * (length(selected_variables) + 1)
+
+cat("Selected model var: ", selected_variables, 
+    "(", length(selected_variables), ")", "\n")
+cat("Selected train error=", selected_train_error, "\n")
+cat("BIC=", bic)
+
+```
+
+
+
+### Computing the TestErr using the selected model based on BIC
+```{r }
+selected_test_error <- mean((y_test - predict(selected_lm_model, newdata = x_test))^2)
+cat("Selected test error=", selected_test_error)
+```
+
+**Comment:** There is a better performance on test data for selected variables with $0.4925$ error rate compare to its error rate with $0.521274$ when the full variables were used. The reverse is the case for train set under the selected variables.
+
+
+
+### (c) In part (b), replace BIC by AIC,
+$$
+A I C\left(\widehat{M}_j\right)=n \log (\text { TrainErr })+2\left|\widehat{M}_j\right| .
+$$
+### Choose the best model by minimizing AIC and report the set of selected variables. Furthermore, use the selected variables to refit the OLS and report TestErr.
+```{r }
+# Forward selection with AIC
+forward_model_aic <- regsubsets(lpsa ~ ., data = x_train, nvmax = 8, method = "forward", really.big = TRUE)
+summary(forward_model_aic)
+
+```
+
+
+
+```{r }
+# 8 models in the order of forward selection
+m1 <- lm(y_train~x_train[,1])
+m2 <- lm(y_train~x_train[,1]+x_train[,2])
+m3 <- lm(y_train~x_train[,1]+x_train[,2]+x_train[,5])
+m4 <- lm(y_train~x_train[,1]+x_train[,2]+x_train[,4]+x_train[,5])
+m5 <- lm(y_train~x_train[,1]+x_train[,2]+x_train[,4]+x_train[,5]+x_train[,8])
+m6 <- lm(y_train~x_train[,1]+x_train[,2]+x_train[,4]+x_train[,5]+x_train[,6]+x_train[,8])
+m7 <- lm(y_train~x_train[,1]+x_train[,2]+x_train[,3]+x_train[,4]+x_train[,5]+x_train[,6]+x_train[,8])
+m8 <- lm(y_train~.,x_train[,1:8])
+```
+
+
+
+### # compute RSS for the four models
+```{r }
+rss <- rep(0,8)
+rss[1] <- sum((y_train-predict(m1))^2)
+rss[2] <- sum((y_train-predict(m2))^2)
+rss[3] <- sum((y_train-predict(m3))^2)
+rss[4] <- sum((y_train-predict(m4))^2)
+rss[5] <- sum((y_train-predict(m5))^2)
+rss[6] <- sum((y_train-predict(m6))^2)
+rss[7] <- sum((y_train-predict(m7))^2)
+rss[8] <- sum((y_train-predict(m8))^2)
+```
+
+
+
+### compute AIC and BIC
+```{r}
+#bic <- rep(0,8)
+aic <- rep(0,8)
+for (i in 1:8){
+#bic[i] = n*log(rss[i]/n)+log(n)*(1+i)
+aic[i] = n*log(rss[i]/n)+2*(1+i)
+}
+
+# find the optimal model
+#best_model_index_bic<-which.min(bic)
+best_model_index_aic<-which.min(aic)
+
+# Retrieve the selected model
+selected_model <- summary(forward_model_aic)$which[best_model_index_aic, ]
+
+# Extract the variables in the selected model
+selected_variables <- names(selected_model[selected_model == 1])
+selected_variables <- selected_variables[-1]
+
+# Fit the OLS model using the selected variables
+selected_lm_model_aic <- lm(lpsa ~ ., data = x_train[, c("lpsa", selected_variables)])
+
+# Calculate TrainErr
+selected_train_error <- mean((y_train - predict(selected_lm_model_aic))^2)
+
+# Calculate BIC
+n <- nrow(x_train)
+aic <- n * log(selected_train_error) + 2 * (length(selected_variables) + 1)
+
+cat("Selected model var: ", selected_variables, 
+    "(", length(selected_variables), ")", "\n")
+cat("Selected train error=", selected_train_error, "\n")
+cat("AIC=", aic)
+```
+
+
+
+
+### Computing the TestErr using the selected model based on AIC
+```{r }
+selected_test_error <- mean((y_test - predict(selected_lm_model_aic,
+                                              newdata = x_test))^2)
+cat("Selected test error=", selected_test_error)
+```
+
+**Comment:** we observed that the test error of selected model based on BIC with $0.4925$ is slightly better of the one based on AIC with test error $0.5165$. Moreover, BIC based selection only used two variables while AIC based make used of seven variables. So, BIC wins in both model simplicity and error rate, hurray!!! :)
+
+
+
+```{r }
+
+```
+
+
+## 7. Fit the LASSO regression for the prostate cancer data set. You can use R functions "lars()" and "cv.lars()"
+### (a) Select the parameter with 5 -fold $\mathrm{CV}$, using the minimum $\mathrm{CV}$ rule. Report the best $s$ (or $\lambda$, or $t$ ), the selected model, the estimated regression coefficients, and the TestErr.
+```{r}
+library(lars)
+set.seed(1)
+x_train2 <- as.matrix(x_train)
+x_test2 <- as.matrix(x_test)
+lasso.s<-seq(0,1,length=100)
+lasso_fit <- lars(x = x_train2[, -9], y = x_train2[,9], type = "lasso")
+cv_fit <- cv.lars(x_train2[, -9], x_train2[,9], K = 5,
+                  index=lasso.s,mode="fraction")
+lasso.mcv <- which.min(cv_fit$cv)
+
+## minimum CV rule
+best_lambda <- lasso.s[lasso.mcv]
+lasso.coef1 <- predict(lasso_fit, s=best_lambda, type="coef", mode="frac")
+test_predict <- predict(lasso_fit, newx = x_test2[,-9], s=best_lambda, type="fit",mode="frac")
+test_error <- mean((x_test2[,9] - test_predict$fit)^2)
+cat("Best tuning parameter s/lambda=", best_lambda, ",\n\n",
+    "Its test error=",test_error, "\n\n", "Estimated Coeficients: \n" )
+print(lasso.coef1$coefficients)
+```
+
+
+
+
+### (b) Select the parameter with 5-fold CV, using the one-standard deviation rule for CV. Report the best $s$ (or $\lambda$, or $t$ ), the selected model, the estimated regression coefficients, and the TestErr.
+```{r}
+## one-standard rule
+bound<-cv_fit$cv[lasso.mcv]+cv_fit$cv.error[lasso.mcv]
+best_lambda2<-lasso.s[min(which(cv_fit$cv<bound))]
+lasso.coef2 <- coef(lasso_fit, s=best_lambda2, mode="frac")
+test_predict2 <- predict(lasso_fit, newx = x_test2[,-9], 
+                         s=best_lambda2, type="fit",mode="frac")
+test_error2 <- mean((x_test2[,9] - test_predict2$fit)^2)
+cat("Best tuning parameter s/lambda=", best_lambda2, ",\n\n",
+    "Its test error=",test_error2, "\n\n", "Estimated Coeficients: \n" )
+print(lasso.coef2)
+```
+**Comment:** We noticed that the test error under minimum CV rule is lower than that of one-standard rule. The test error under minimum CV rule is varies if not set.seed it, and sometimes it could be 0.4912, where there is no such for one-standard rule. Moreover, the one-standard rule keep 3 important variable and make others spares, where minimum CV rule keeps 5 variables out of the 8 variables.
+
+
+
+## 8. Fit the adaptive LASSO regression for the prostate cancer data set with $\gamma=1$.\
+
+### (a) Select the parameter with 5 -fold $\mathrm{CV}$, using the minimum $\mathrm{CV}$ rule. Report the best tuning parameter, the selected model, the estimated regression coefficients, and the TestErr.\\
+
+```{r}
+# Load the required library
+library(glmnet)
+
+
+# Split the data into predictors (X) and the response variable (y)
+X <- x_train2[,-9]
+y <- y_train
+
+# Define a sequence of lambda values for the adaptive LASSO
+lambda_sequence <- seq(0, 10, length = 100)
+
+# Initialize an empty vector to store cross-validation results
+cv_results <- matrix(NA, nrow = length(lambda_sequence), ncol = 5)
+
+# Perform 5-fold cross-validation for different lambda values
+for (i in 1:length(lambda_sequence)) {
+  fit <- glmnet(X, y, alpha = 1, lambda = lambda_sequence[i], nfolds = 5)
+  cv_results[i, ] <- c(lambda_sequence[i], fit$cvm, fit$index.min)
+}
+
+# Find the lambda that minimizes cross-validation error (Minimum CV Rule)
+best_lambda_min <- cv_results[which.min(cv_results[, 2]), 1]
+
+# Fit the model with the best lambda using the entire dataset
+best_model_min <- glmnet(X, y, alpha = 1, lambda = best_lambda_min)
+
+test_predict3 <- predict(best_model_min, newx = x_test2[,-9])
+test_error3 <- mean((x_test2[,9] - test_predict3)^2)
+
+# Display results for Minimum CV Rule
+cat("==============Minimum CV Rule===============\n")
+cat("Best Lambda:", best_lambda_min, "\n")
+cat("Selected Model (Non-zero coefficients):", sum(coef(best_model_min) != 0), "\n")
+cat("Estimated Regression Coefficients:\n")
+print(coef(best_model_min))
+cat("\n Test error=",test_error3 )
+
+```
+
+
+
+### (b) Select the parameter with 5-fold $\mathrm{CV}$, using the one-standard rule. Report the best tuning parameter, the selected model, the estimated regression coefficients, and the TestErr.\
+```{r}
+# Find the lambda using the one-standard error rule
+set.seed(8)
+lambda_sequence <- seq(0, 1, length = 100)
+cv_fit2 <- cv.lars(X, y, K = 5, index=lambda_sequence,
+                   plot.it = FALSE, mode="fraction")
+lasso.mcv2 <- which.min(cv_fit2$cv)
+min_error_lambda <- cv_fit2$cv[lasso.mcv2]+cv_fit2$cv.error[lasso.mcv2]
+best_lambda_one_std <- lambda_sequence[min(which(cv_fit2$cv<min_error_lambda))]
+
+# Fit the model with the best lambda using the entire dataset
+best_model_one_std <- glmnet(X, y, alpha = 1, lambda = best_lambda_one_std)
+test_predict4 <- predict(best_model_one_std, newx = x_test2[,-9])
+test_error4 <- mean((x_test2[,9] - test_predict4)^2)
+
+# Display results for One-Standard Rule
+cat("==============One-Standard Error Rule=============\n")
+cat("Best Lambda:", best_lambda_one_std, "\n")
+cat("Selected Model (Non-zero coefficients):", sum(coef(best_model_one_std) != 0), "\n")
+cat("Estimated Regression Coefficients:\n")
+print(coef(best_model_one_std))
+cat("\n Test Error (MSE):", test_error4)
+```
+
+
+### (c) Compare the adaptive LASSO with the LASSO and forward selection, in terms of their variable selection results and prediction accuracy.\
+
+**Comment:** In regressing lpsa variable over others variables in the prostate cancer data for an important variables selection, we notice that, forward selection keeps just 2 variables out of 8 variables with $0.4924$ error rate based on BIC consideration. Lasso keeps 5 variables out of 8 variables with $0.4569$ error rate based on minimum CV consideration. Adaptive Lasso keeps 3 variables out of 8 variables with $0.5190$ error rate based on one-standard rule. We observed that all the three models commonly selected those two variables (lcavol, and lweight). So in our case, forward selection method perform best due to its model simplicty and the error rate it produced. 
+
+
+
+
+# === Using given hint procedure with lars package ====
+
+## (a) 
+```{r }
+library(lars)
+set.seed(1300)
+
+X <- x_train2[,-9]
+X_new <- x_test2[,-9]
+Y<- x_train2[,9]
+
+# Step 1: Calculate weights
+beta_ols <- coef(lm(Y ~ X))
+w <- 1 / abs(beta_ols[-1])
+
+# Step 2: Rescale X
+#X_star <- scale(X, center = FALSE, scale = w)
+X_star <- X/w
+X_new_star <- X_new/w
+
+#  Use cv.lars() and lars() to tune the penalty parameter λ and 
+# fit adaptive lasso regression with Y and X_star.
+lasso.s<-seq(0,1,length=100)
+lasso_fit <- lars(x = X_star, y = Y, type = "lasso", normalize = FALSE, intercept = TRUE  )
+cv_fit <- cv.lars(X_star, Y, K = 5,
+                  index=lasso.s,mode="fraction")
+lasso.mcv <- which.min(cv_fit$cv)
+
+## minimum CV rule
+best_lambda <- lasso.s[lasso.mcv]
+beta_hat_star <- predict(lasso_fit, s=best_lambda, type="coef", mode="frac")
+beta_hat<- c(beta_ols[1], beta_hat_star$coefficients / w)
+test_predict <- predict(lasso_fit, newx = X_new_star, s=best_lambda, type="fit",mode="frac")
+
+## Alternative way of predicting by adding a column with entries of 1
+#column_1 <- rep(1, nrow(X_new_star))
+#X_new_star <- cbind(column_1, X_new_star)
+#predict <- X_new_star %*% beta_hat
+#test_error <- mean((x_test2[,9] - predict)^2)
+
+test_error <- mean((x_test2[,9] - test_predict$fit)^2)
+cat("Best tuning parameter s/lambda=", best_lambda, ",\n\n",
+    "Its test error=",test_error, "\n\n", "Estimated Coeficients: \n" )
+print(beta_hat)
+```
+
+
+## (b)
+```{r}
+## one-standard rule
+bound<-cv_fit$cv[lasso.mcv]+cv_fit$cv.error[lasso.mcv]
+best_lambda2<-lasso.s[min(which(cv_fit$cv<bound))]
+beta_hat_star2 <- predict(lasso_fit, s=best_lambda2, mode="frac")
+beta_hat2<- c(beta_ols[1], beta_hat_star2$coefficients / w)
+test_predict2 <- predict(lasso_fit, newx = X_new_star, s=best_lambda2, type="fit",mode="frac")
+test_error2 <- mean((x_test2[,9] - test_predict2$fit)^2)
+cat("\n Best tuning parameter s/lambda=", best_lambda2, ",\n\n",
+    "Its test error=",test_error2, "\n\n", "Estimated Coeficients: \n" )
+print(beta_hat2)
+```
+
+**Comment:** Using given the hint with lars package, and the earlier library (glmnet) used above, we notice that the one-standard rule always slightly performs better of minimum CV rule, and also give a better sparsity.
+
+
+
+
+
+
+
+
+
+
+
+

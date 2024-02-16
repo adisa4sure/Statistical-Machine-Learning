@@ -1,0 +1,435 @@
+
+---
+title: "Math574M_Hw6"
+author: "Saheed Adisa, Ganiyu"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    latex_engine: xelatex
+---
+
+
+
+# (Elastic Net) Fit the elastic net for the prostate cancer data set using R package glmnet. Code example is given by elastic-net.R, posted at D2L lecture notes. The penalty term used in the package is
+$$
+\lambda\left(\frac{1-\alpha}{2}\|\boldsymbol{\beta}\|_2^2+\alpha\|\boldsymbol{\beta}\|_1\right),
+$$
+# where $\alpha \in[0,1]$ is a mixing parameter. It is the lasso penalty when $\alpha=1$ and ridge penalty when $\alpha=0$.\
+
+### (a) Set the random seed to 2345. Consider five choices of $\alpha: 0,0.25,0.5,0.75,1$. For each $\alpha$, fit the elastic net model using the training set and tune $\lambda$ by 5 -fold $\mathrm{CV}$ using the minimum $\mathrm{CV}$ rule. For each $\alpha$, report the best $\lambda$, its $\mathrm{CV}$ error, and the estimated regression coefficients.
+```{r }
+library(glmnet)
+set.seed(2345)
+
+# loading the dataset from the book site
+prostate_data <- read.table(
+  "https://hastie.su.domains/ElemStatLearn/datasets/prostate.data")
+x_train <- subset(prostate_data, train == TRUE)[,1:9]
+y_train <- subset(prostate_data, train == TRUE)[,9]
+x_test <- subset(prostate_data, train == FALSE)[,1:9]
+y_test <- subset(prostate_data, train == FALSE)[,9]
+X <- as.matrix(x_train[,-9])
+y <- y_train
+
+alpha_values <- c(0, 0.25, 0.5, 0.75, 1)
+best_lambda <- numeric(length(alpha_values))
+cv_errors <- numeric(length(alpha_values))
+coefficients_list <- list()
+
+for (i in seq_along(alpha_values)) {
+  alpha <- alpha_values[i]
+  
+  # Fit elastic net model with cross-validated lambda selection
+  cv_model <- cv.glmnet(X, y, alpha = alpha, nfolds = 5)
+  
+  # Get the best lambda and its corresponding CV error
+  best_lambda[i] <- cv_model$lambda.min
+  cv_errors[i] <- min(cv_model$cvm)
+  
+  # Get the estimated coefficients for the best lambda
+  coefficients_list[[i]] <- coef(cv_model, s = best_lambda[i])
+  
+  # Display results for each alpha
+  cat("\nAlpha =", alpha, "\n")
+  cat("Best Lambda =", best_lambda[i], "\n")
+  cat("CV Error =", cv_errors[i], "\n")
+  print(coefficients_list[[i]])
+  cat("========================================\n")
+}
+```
+
+
+
+### (b) Based on the reported $\mathrm{CV}$ errors in (a), select the best $(\alpha, \lambda)$ pair and report its TestErr.
+```{r }
+# getting best alpha and lambda
+best_alpha_index <- which.min(cv_errors)
+best_alpha <- alpha_values[best_alpha_index]
+best_lambda_for_alpha <- best_lambda[best_alpha_index]
+test_x <- as.matrix(x_test[,-9])
+test_y <- y_test
+
+# Fit the final elastic net model with the best alpha and lambda
+final_model <- glmnet(X, y, alpha = best_alpha, lambda = best_lambda_for_alpha)
+
+# Predict on the test set
+test_predictions <- predict(final_model, newx = as.matrix(test_x), s = best_lambda_for_alpha)
+
+# Calculate TestErr
+test_error <- mean((test_predictions - test_y)^2)
+
+cat("\nBest Alpha =", best_alpha, "\n")
+cat("Best Lambda =", best_lambda_for_alpha, "\n")
+cat("TestErr =", test_error, "\n")
+```
+
+
+# 6. (Regression Splines) Consider one-dimensional regression model
+$$
+Y=f(x)+\epsilon,
+$$
+# where the input $X \in[0,1]$, the output $Y \in R$, and the underlying true function is
+$$
+f(x)=3\left[0.1 \sin (2 \pi x)+0.2 \cos (2 \pi x)+0.3 \sin ^2(2 \pi x)+0.4 \cos ^3(2 \pi x)+0.5 \sin ^3(2 \pi x)\right]
+$$
+# and the random error $\epsilon \sim N(0,1)$ i.i.d.\
+
+### (a) Set the random seed to 100 . Generate the training set $\left\{\left(x_i, y_i\right), i=1, \cdots, n=100\right\}$ as follows
+$$
+\mathrm{x}=\mathrm{seq}(0,1, \text { length }=100), \quad \text { noise }=\operatorname{rnorm}(\text { length }(\mathrm{x}), 0,1), \quad \mathrm{y}=\mathrm{f}(\mathrm{x})+\text { noise } .
+$$
+```{r }
+set.seed(100)
+
+# Define the true function f(x)
+f <- function(x) {
+  3 * (0.1 * sin(2 * pi * x) + 0.2 * cos(2 * pi * x) + 0.3 * sin(2 * pi * x)^2 +
+       0.4 * cos(2 * pi * x)^3 + 0.5 * sin(2 * pi * x)^3)
+}
+
+# Generate training data
+n <- 100
+x <- seq(0, 1, length = n)
+noise <- rnorm(length(x), 0, 1)
+y <- f(x) + noise
+
+# Plot true function and training data
+plot(x, y, col = "blue", pch = 16, main = "True Function and Training Data")
+lines(x, f(x), col = "red", lwd = 2)  # True function
+legend("topright", legend = c("True f", "Training Data"), col = c("red", "blue"), pch = c("_", "o"))
+```
+
+
+
+### (b) Estimate $f$ using four methods: linear model, quadratic model, cubic model, and cubic splines with $\mathrm{df}=9$. For each model, obtain $\hat{f}$ from the training data and compute its mean squared error using
+$$
+\operatorname{MSE}(\hat{f})=\frac{1}{n} \sum_{i=1}^n\left[f\left(x_i\right)-\hat{f}\left(x_i\right)\right]^2 .
+$$
+```{r }
+# Linear model
+linear_model <- lm(y ~ x)
+linear_pred <- predict(linear_model, data.frame(x = x))
+mse_linear <- mean((f(x) - linear_pred)^2)
+
+# Quadratic model
+quadratic_model <- lm(y ~ poly(x, 2))
+quadratic_pred <- predict(quadratic_model, data.frame(x = x))
+mse_quadratic <- mean((f(x) - quadratic_pred)^2)
+
+# Cubic model
+cubic_model <- lm(y ~ poly(x, 3))
+cubic_pred <- predict(cubic_model, data.frame(x = x))
+mse_cubic <- mean((f(x) - cubic_pred)^2)
+
+# Cubic splines with df=9
+library(splines)
+cubic_spline_model <- lm(y ~ bs(x, df = 9))
+cubic_spline_pred <- predict(cubic_spline_model, data.frame(x = x))
+mse_cubic_spline <- mean((f(x) - cubic_spline_pred)^2)
+```
+
+
+
+### (c) Compare the four estimated $\hat{f}$ in terms of MSE and comment on their performance. Create one plot which contains the scatter plot (x-axis is $x$, y-axis is $y$ ) of the training data, the true $f$, superposed with the four estimated $\hat{f}$, using different colors and adding a legend.
+```{r }
+models <- c("Linear", "Quadratic", "Cubic", "Cubic Spline (df=9)")
+mses <- c(mse_linear, mse_quadratic, mse_cubic, mse_cubic_spline)
+cat("Model\t\tMSE\n")
+cat("-----\t\t---\n")
+for (i in seq_along(models)) {
+  cat(sprintf("%s:\t%.4f\n", models[i], mses[i]))
+}
+
+# Plot true function and estimated functions
+plot(x, y, col = "blue", pch = 16, main = "True and Estimated Functions")
+lines(x, f(x), col = "red", lwd = 2)  # True function
+lines(x, linear_pred, col = "green", lwd = 2)  # Linear model
+lines(x, quadratic_pred, col = "purple", lwd = 2)  # Quadratic model
+lines(x, cubic_pred, col = "orange", lwd = 2)  # Cubic model
+lines(x, cubic_spline_pred, col = "black", lwd = 2)  # Cubic spline
+legend("topright", legend = c("True f", "Linear", "Quadratic", "Cubic", "Cubic Spline"), 
+       col = c("red", "green", "purple", "orange", "black"), pch = c("o", "o", "o", "o", "o"))
+```
+**Comment:** We notice that out of the four methods, Cubic Spline with $df=9$ performed best with $0.0453$ error, while Linear model performed worst with $1.8639$ error. We can also see from the plotted graph how Cubic Sline curve is much closed to true function, while Linear line is bias. 
+
+
+### (d) Estimate $f$ by regression cubic splines with nine values of $\mathrm{df} \in\{3,5, \cdots, 19\}$. For each df, obtain $\hat{f}$, compute its mean squared error $\operatorname{MSE}\left(\hat{f}_{d f}\right)$, and draw a scatter plot of the training data superposed by the true $f$ and $\hat{f}_{d f}$; organize these nine plots into one figure with $3 \times 3$ display using par(mfrow).
+```{r }
+# Regression cubic splines with different values of df
+par(mfrow = c(3, 3))
+for (df in seq(3, 19, by = 2)) {
+  cubic_spline_model <- lm(y ~ bs(x, df = df))
+  cubic_spline_pred <- predict(cubic_spline_model, data.frame(x = x))
+  mse_cubic_spline <- mean((f(x) - cubic_spline_pred)^2)
+  
+  # Plot true function and estimated function for each df
+  plot(x, y, col = "blue", pch = 16, 
+       main = paste("Cubic Spline=", df, ", MSE=",round(mse_cubic_spline,4)))
+  lines(x, f(x), col = "red", lwd = 2)  # True function
+  lines(x, cubic_spline_pred, col = "black", lwd = 2)  # Cubic spline
+  #legend("topright", legend = c("True f", "Cubic Spline"), 
+        # col = c("red", "black"), pch = c("o", "o"))
+  cat(sprintf("DF=%d:\t%.4f\n", df, mse_cubic_spline))
+}
+```
+
+### (e) Based on (d), which df gives the best performance? Justify your answer.
+
+**Comment:** With 9 different df on the cubic spline, we have cubic spline with df=9 performed best, which its curve is also the most closed to the true function, where the one of df=11 is the second best. Then, cubic spline with df=3 gives the lowest performance. Therefore, we observed that increasing the degree of freedom (df) doesn't guarantee better performance, which may lead to overfitting, that is, high variance, low bias. 
+
+
+
+
+# 7.(Smoothing Splines) Consider one-dimensional regression model with the input $X \in[0,1]$ and the output $Y$. Assume the true regression model is
+$$
+Y=f(x)+\epsilon,
+$$
+# with the true $f$ given by
+$$
+f(x)=3\left[0.1 \sin (2 \pi x)+0.2 \cos (2 \pi x)+0.3 \sin ^2(2 \pi x)+0.4 \cos ^3(2 \pi x)+0.5 \sin ^3(2 \pi x)\right]
+$$
+# and the random error $\epsilon \sim N(0,1)$ i.i.d. See the sample code in splineCode.R.\\
+
+### (a) Generate the training data using the procedure described in 7(a), with $n=100$.
+```{r }
+set.seed(100)
+library(splines)
+
+# The true function f(x)
+f <- function(x) {
+  3 * (0.1 * sin(2 * pi * x) + 0.2 * cos(2 * pi * x) + 0.3 * sin(2 * pi * x)^2 +
+       0.4 * cos(2 * pi * x)^3 + 0.5 * sin(2 * pi * x)^3)
+}
+
+# Generate training data
+n <- 100
+x <- seq(0, 1, length = n)
+noise <- rnorm(length(x), 0, 1)
+y <- f(x) + noise
+
+# Plot true function and training data
+plot(x, y, col = "blue", pch = 16, main = "True Function and Training Data")
+lines(x, f(x), col = "red", lwd = 2)
+legend("topright", legend = c("True f", "Training Data"), col = c("red", "blue"), pch = c(16, 16))
+```
+
+
+
+### (b) Estimate $f$ by fitting smoothing splines with three values of $\lambda \in\left\{10^{-7}, 10^{-1}, 1\right\}$, and compute the $\operatorname{MSE}\left(\hat{f}_\lambda\right)$. Plot the training data scatter plot, superposed by the true $f$ and three fitted curves.
+```{r }
+lambda_values <- c(1e-7, 1e-1, 1)
+mse_values <- numeric(length(lambda_values))
+
+# Plot training data and true function
+plot(x, y, col = "blue", pch = 16, main = "Smoothing Splines with Different Lambda Values")
+lines(x, f(x), col = "black", lwd = 2)
+
+# Fit smoothing splines with different lambda values
+for (i in seq_along(lambda_values)) {
+  lambda <- lambda_values[i]
+  spline_model <- smooth.spline(x, y, lambda = lambda)
+  y_pred <- predict(spline_model, x)$y
+  mse_values[i] <- mean((f(x) - y_pred)^2)
+  
+  # Plot fitted curve
+  lines(x, y_pred, col = i + 1, lwd = 2)
+}
+legend("topright", legend = c("True f", "Training Data", paste("Lambda =", lambda_values)), 
+       col = c("black", "blue", 2:(length(lambda_values) + 1)), pch = c(16, 16, 16))
+
+# Print MSE values
+cat("Lambda\t\tMSE\n")
+cat("------\t\t---\n")
+for (i in seq_along(lambda_values)) {
+  cat(sprintf("%.7f:\t%.4f\n", lambda_values[i], mse_values[i]))
+}
+```
+
+
+### (c) Find the best $\hat{\lambda}$ using GCV, compute its $\operatorname{MSE}\left(\hat{f}_{\hat{\lambda}}\right)$, and compare it with those in (b). Add the fitted curve $\hat{f}_{\hat{\lambda}}$ to the figure produced in (b), including a legend.
+```{r }
+# Plot training data and true function
+plot(x, y, col = "blue", pch = 16, main = "Smoothing Splines with Different Lambda Values")
+lines(x, f(x), col = "black", lwd = 2)
+
+# Fit smoothing splines with different lambda values
+for (i in seq_along(lambda_values)) {
+  lambda <- lambda_values[i]
+  spline_model <- smooth.spline(x, y, lambda = lambda)
+  y_pred <- predict(spline_model, x)$y
+  mse_values[i] <- mean((f(x) - y_pred)^2)
+  
+  # Plot fitted curve
+  lines(x, y_pred, col = i + 1, lwd = 2)
+}
+# use GCV to tune parameter
+sfit <- smooth.spline(x,y) 
+bestlam <- round(sfit$lambda,3)
+lines(predict(sfit,x), col = "purple", lty=1, lwd=2) 
+besterr <- mean((predict(sfit,x)$y-f(x))^2)
+legend("topright", legend = c("True f", "Training Data", paste("Lambda =", lambda_values), "bestlambda=0"), 
+       col = c("black", "blue", 2:(length(lambda_values) + 1), "purple"), pch = c(16, 16, 16,16))
+
+# Print MSE values
+cat("Lambda\t\tMSE\n")
+cat("------\t\t---\n")
+for (i in seq_along(lambda_values)) {
+  cat(sprintf("%.7f:\t%.4f\n", lambda_values[i], mse_values[i]))
+}
+cat(sprintf("%.7f:\t%.4f\n", bestlam, besterr))   # Adding best lambda MSE
+```
+**Comment:** We notice that the best lambda selected by GCV outperform others lambdas. Also, its curve in the plot is the most closest one to the true function even closer than the curve of Cubic Spline with df=9 in problem 6.
+
+
+
+
+
+# 8. Classify 2's and 3's for the zip code set. Apply the SVM using the R package $e 1071$.
+
+### (a) Fit the linear SVM using the training data with a sequence of tuning parameters. You can create a grid of points for the cost parameter, e.g. $\left\{10^{-3}, 10^{-2.5}, 10^{-2}, \cdots, 10^{4.5}, 10^5\right\}$. Compute the test error for each cost parameter, and report the best one which gives the smallest test error.
+```{r }
+library(e1071)
+library(caret)
+set.seed(123)
+
+# Loading the dataset
+train_data <- read.table("zip.train", sep = "")
+test_data <- read.table("zip.test", sep = "")
+
+# taking the subsets of the data with class Y in {0, 3, 5, 6, 9} for part (a)
+class_labels <- c(2, 3)
+train_data <- train_data[train_data$V1 %in% class_labels, ]
+test_data <- test_data[test_data$V1 %in% class_labels, ]
+
+cost_values <- 10^(seq(-3, 5, by = 0.5))   # cost values
+
+# Using 10-fold cross validation in order to determine optimal cost parameter
+tuned1 <- tune(svm, V1 ~ ., data = train_data, kernel = "linear", ranges = list(cost=cost_values))
+summary(tuned1)
+```
+
+
+### Checking for best model
+```{r }
+bestmod1 = tuned1$best.model
+summary ( bestmod1 )
+cat("Best cost parameter for Linear SVM:", tuned1$best.parameters$cost, "\n")
+```
+
+
+
+### Plotting Confusion Matrix with its accuracy on test data for linear SVM
+```{r }
+x_test_pred1 <- predict(bestmod1, test_data, type="class")
+test_error1 <- mean(round(x_test_pred1) != test_data$V1 )
+cat("Test error=", test_error1, "\n")
+confusionMatrix(table(round(x_test_pred1), test_data$V1)[-3,])
+```
+
+
+
+### (b) Fit the polynomial kernel SVM using the training data. In this case, there are two tuning parameters: cost and the polynomial degree, so you need to search for the best pair in a two-dimensional grid, say the cost in $\left\{10^{-3}, 10^{-2.5}, 10^{-2}, \cdots, 10^{4.5}, 10^5\right\}$ and the degree in $\{1,2,3\}$. Compute the test errors for all the possible pairs and identify the best pair that gives the smallest test error.
+```{r }
+# Using 10-fold cross validation in order to determine optimal degree, and cost parameter
+tuned2 <- tune(svm, V1 ~ ., data = train_data, kernel = "polynomial", ranges = list(cost=cost_values, degree = c (1 ,2 ,3)))
+summary(tuned2)
+cat("Best degree and Cost Parameter for polynomial SVM:", tuned2$best.parameters$degree, ", and", tuned2$best.parameters$cost, " respectively \n" )
+```
+
+
+
+### Checking for best model
+```{r }
+bestmod2 = tuned2$best.model
+summary ( bestmod2 )
+cat("Best cost and gamma parameter for polynomial SVM are:", tuned2$best.parameters$cost, "and", tuned2$best.parameters$degree, " respectively. \n" )
+```
+
+
+
+### Plotting Confusion Matrix with its accuracy on test data for polynomial SVM
+```{r }
+x_test_pred2 <- predict(bestmod2, test_data, type="class")
+test_error2 <- mean(round(x_test_pred2) != test_data$V1 )
+cat("Test error=", test_error2, "\n")
+confusionMatrix(table(round(x_test_pred2), test_data$V1)[c(-1,-4),])
+```
+
+
+
+### (c) Fit the Gaussian kernel SVM using the training data with a sequence of tuning parameters. In addition to the cost parameter, the second tuning parameter is the relative bandwidth controlled by gamma in the function svm(). Therefore you should consider a combination of two, say the cost from $\left\{10^{-3}, 10^{-2.5}, 10^{-2}, \cdots, 10^{4.5}, 10^5\right\}$ and the gamma from $\{0.001,0.005,0.1\}$. Compute the test errors for all the pairs and identify the best pair that gives the smallest test error.
+```{r }
+# Using 10-fold cross validation in order to determine optimal gamma, and cost parameter
+set.seed(10)
+tuned3 <- tune(svm, V1 ~ ., data = train_data, kernel = "radial", ranges = list(cost=cost_values , gamma = c (0.001, 0.005, 0.01)))
+summary(tuned3)
+cat("Best cost and gamma parameter for Gaussian SVM are:", tuned3$best.parameters$cost, "and", tuned3$best.parameters$gamma, " respectively. \n")
+```
+
+
+
+### Checking for best model
+```{r }
+bestmod3 = tuned3$best.model
+summary ( bestmod3 )
+cat("Best cost and gamma parameter for Gaussian SVM are:", tuned3$best.parameters$cost, "and", tuned3$best.parameters$gamma, " respectively. \n")
+```
+
+
+
+### Plotting Confusion Matrix with its accuracy on test data for Gaussian SVM
+```{r }
+x_test_pred3 <- predict(bestmod3, test_data, type="class")
+test_error3 <- mean(round(x_test_pred3) != test_data$V1 )
+cat("Test error=", test_error3, "\n")
+confusionMatrix(table(round(x_test_pred3), test_data$V1))
+```
+
+
+
+
+### (d) Compare the best classifiers from (a)-(c) in terms of their test error performance and make comments.
+```{r }
+cat("===================== Linear SVM =====================\n")
+cat("Test Error=",test_error1,",\t Best cost parameter", tuned1$best.parameters$cost, ".\n")
+
+cat("\n===================== Polynomial SVM =====================\n")
+cat("Test Error=",test_error2,",\t Best cost and gamma parameter for polynomial SVM are:", tuned2$best.parameters$cost, "and", tuned2$best.parameters$degree, " respectively. \n" )
+
+cat("\n===================== Gaussian SVM =====================\n")
+cat("Test Error=",test_error3,",\t Best cost and gamma parameter for Gaussian SVM are:", tuned3$best.parameters$cost, "and", tuned3$best.parameters$gamma, " respectively. \n")
+```
+
+**Comment:** Based on their test errors, the Gaussian SVM performs best with 0.0219 test error, follow by Polynomial SVM with 0.0274 test error, and lowest performance goes to Linear SVM with 0.0302 test error.
+
+
+
+
+
+
+
+
+
+
+
+
